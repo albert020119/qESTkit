@@ -2,6 +2,6 @@
 Quantum simulator made for Introduction to Quantum Computing laboratory. 
 
 Contributors:
-Albert Endre <br / > 
-Androne Tudor <br / >
+Albert Endre
+Androne Tudor
 Billich Steven

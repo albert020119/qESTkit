@@ -16,7 +16,7 @@ def test_complex_circuit_with_measurement():
     qc.add_gate(Hadamard(qubits=[0]))
 
     # Add a CNOT gate using its full operator
-    qc.add_gate(CNOT(control=0, target=1))
+    qc.add_gate(CNOT(0,1))
 
     # Apply all gates
     qc.apply()
@@ -35,7 +35,7 @@ def test_complex_circuit_with_measurement():
         # Reset the circuit to its original state for the next measurement
         qc.reset()
         qc.add_gate(Hadamard(qubits=[0]))
-        qc.add_gate(CNOT(control=0, target=1))
+        qc.add_gate(CNOT(0,1))
         qc.apply()
 
     # Count occurrences of each basis state

@@ -1,3 +1,5 @@
+from collections import Counter
+
 import numpy as np
 
 class QuantumCircuit:
@@ -57,3 +59,30 @@ class QuantumCircuit:
         collapsed_state[measured_basis_state] = 1
         self.state = collapsed_state
         return collapsed_state, measured_basis_state
+
+    def simulate(self, num_measurements=1000):
+        """
+        Simulate the quantum circuit and measure the output state.
+
+        :param num_measurements: Number of measurements to perform.
+        :return: A dictionary containing counts for each basis state.
+        """
+        # Apply all gates in the circuit to get the final state
+        self.apply()
+
+        # Calculate probabilities of each basis state
+        probabilities = np.abs(self.state) ** 2
+
+        # Perform measurements based on probabilities
+        measurement_results = np.random.choice(
+            len(probabilities), size=num_measurements, p=probabilities
+        )
+
+        # Count occurrences of each measured state
+        counts = Counter(measurement_results)
+
+        # Display the results
+        print("Measurement results (counts):", counts)
+        print("Empirical probabilities:", {state: count / num_measurements for state, count in counts.items()})
+
+        return counts

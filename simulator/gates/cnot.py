@@ -1,87 +1,70 @@
 import numpy as np
-from simulator.gates.gate import Gate
+from .gate import Gate
 
 class CNOT(Gate):
-    def __init__(self, control, target):
+    def __init__(self, control_qubit, target_qubit):
         """
-        Initialize the CNOT gate.
+        Initialize the CNOT (Controlled-NOT) gate.
 
-        :param control: The control qubit index.
-        :param target: The target qubit index.
+        :param control_qubit: Index of the control qubit.
+        :param target_qubit: Index of the target qubit.
         """
-        super().__init__(name="CNOT", qubits=[control, target])
-        if control == target:
-            raise ValueError("Control and target qubits must be different.")
+        super().__init__(name='CNOT', qubits=[control_qubit, target_qubit])
 
-        # The 4x4 matrix representation of the CNOT gate
-        self.matrix = np.array([[1, 0, 0, 0],
-                                [0, 1, 0, 0],
-                                [0, 0, 0, 1],
-                                [0, 0, 1, 0]], dtype=complex)
+        # The CNOT gate matrix for 2 qubits
+        self.matrix = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0]
+        ], dtype=complex)
 
     def apply(self, state_vector):
         """
-        Apply the CNOT gate to a quantum state vector.
+        Apply the CNOT gate to the given quantum state vector.
 
         :param state_vector: The state vector of the quantum system.
-        :return: The modified state vector after applying the gate.
+        :return: The modified state vector after applying the CNOT gate.
         """
-        if self.qubits is None or len(self.qubits) != 2:
-            raise ValueError("CNOT gate requires exactly two target qubits.")
+        if len(self.qubits) != 2:
+            raise ValueError("CNOT gate requires exactly two qubits: control and target.")
 
-        control, target = self.qubits
+        control_qubit, target_qubit = self.qubits
         num_qubits = int(np.log2(len(state_vector)))
 
-        if control >= num_qubits or target >= num_qubits:
+        if control_qubit >= num_qubits or target_qubit >= num_qubits:
             raise ValueError("Control or target qubit index exceeds the number of qubits in the state vector.")
 
-        # Ensure the control and target qubits are distinct
-        if control == target:
-            raise ValueError("Control and target qubits must be different.")
+        # Generate the full operator for the system
+        operator = self.get_operator(num_qubits)
 
-        # Construct the full operator using the Kronecker product
-        identity = np.eye(2, dtype=complex)
-
-        operator = self._construct_cnot_operator(control, target, num_qubits)
+        # Apply the operator to the state vector
         return operator @ state_vector
 
-    def _construct_cnot_operator(self, control, target, num_qubits):
+    def get_operator(self, num_qubits):
         """
-        Construct the full matrix representation of the CNOT gate for the given system size.
+        Construct the full operator for the quantum system.
 
-        :param control: Index of the control qubit.
-        :param target: Index of the target qubit.
-        :param num_qubits: Total number of qubits in the system.
-        :return: Full matrix representation of the CNOT gate.
+        :param num_qubits: Total number of qubits in the quantum system.
+        :return: A matrix representing the CNOT operator for the full system.
         """
-        # CNOT acts on 2 qubits at a time, create the appropriate projector matrices
-        P0 = np.array([[1, 0], [0, 0]], dtype=complex)  # |0><0|
-        P1 = np.array([[0, 0], [0, 1]], dtype=complex)  # |1><1|
-        X = np.array([[0, 1], [1, 0]], dtype=complex)  # Pauli-X
+        if self.matrix is None:
+            raise ValueError("Gate matrix is not defined.")
 
-        # Initialize operator as identity
-        operator = np.eye(1, dtype=complex)
+        # Start with identity
+        identity = np.eye(2, dtype=complex)
 
+        # Build the full operator using Kronecker products
+        operator = 1
         for i in range(num_qubits):
-            if i == control:
-                operator = np.kron(operator, P0)  # |0><0| on control qubit
-            elif i == target:
-                if control < target:
-                    operator = np.kron(operator, np.eye(2, dtype=complex))
-                else:
-                    operator = np.kron(np.eye(2, dtype=complex), operator)
+            if i == self.qubits[0]:  # Control qubit
+                continue
+            elif i == self.qubits[1]:  # Target qubit
+                operator = np.kron(operator, self.matrix)
+            else:
+                operator = np.kron(operator, identity)
 
-        # Add the |1><1| part with X applied to the target qubit
-        second_term = np.eye(1, dtype=complex)
-        for i in range(num_qubits):
-            # Add the |1><1| part with X applied to the target qubit
-            second_term = np.eye(1, dtype=complex)
-            for i in range(num_qubits):
-                if i == control:
-                    second_term = np.kron(second_term, P1)  # |1><1| on control qubit
-                elif i == target:
-                    second_term = np.kron(second_term, X)  # X on target qubit
-                else:
-                    second_term = np.kron(second_term, np.eye(2, dtype=complex))
+        return operator
 
-            return operator + second_term
+    def __repr__(self):
+        return f"CNOT(control_qubit={self.qubits[0]}, target_qubit={self.qubits[1]})"

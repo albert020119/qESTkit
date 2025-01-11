@@ -10,5 +10,6 @@ from .s import S
 from .y import Y
 from .z import Z
 from .cnot import CNOT
+from .cz import CZ
 
-__all__ = ['X', 'Rx', 'Ry', 'Hadamard', 'T', 'Identity', 'Ph', 'Rz', 'S', 'Y', 'Z', 'CNOT']
+__all__ = ['X', 'Rx', 'Ry', 'Hadamard', 'T', 'Identity', 'Ph', 'Rz', 'S', 'Y', 'Z', 'CNOT', 'CZ']

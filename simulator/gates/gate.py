@@ -14,12 +14,33 @@ class Gate:
 
     def apply(self, state_vector):
         """
-        Apply the gate to a quantum state vector.
+        Apply the Hadamard gate to the given quantum state vector.
 
         :param state_vector: The state vector of the quantum system.
-        :return: The modified state vector after applying the gate.
+        :return: The modified state vector after applying the Hadamard gate.
         """
-        raise NotImplementedError("The apply method must be implemented in subclasses.")
+        if self.qubits is None or len(self.qubits) != 1:
+            raise ValueError("Hadamard gate requires exactly one target qubit.")
+
+        target_qubit = self.qubits[0]
+        num_qubits = int(np.log2(len(state_vector)))
+
+        if target_qubit >= num_qubits:
+            raise ValueError("Target qubit index exceeds the number of qubits in the state vector.")
+
+        # Construct the full operator by combining identity and Hadamard gate
+        identity = np.eye(2, dtype=complex)
+        if target_qubit == 0:
+            operator = self.matrix
+        else:
+            operator = identity
+        for i in range(1, num_qubits):
+            if i == target_qubit:
+                operator = np.kron(operator, self.matrix)
+            else:
+                operator = np.kron(operator, identity)
+
+        return operator @ state_vector
 
     def validate(self, num_qubits):
         """

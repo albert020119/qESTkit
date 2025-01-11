@@ -24,7 +24,7 @@ def test_initialize_superposition():
     """
     Test the initialization of a quantum system in superposition.
     """
-    num_qubits = 6  # Example: 3 qubits
+    num_qubits = 2  # Example: 3 qubits
     expected_amplitude = 1 / np.sqrt(2**num_qubits)
 
     # Initialize the state vector

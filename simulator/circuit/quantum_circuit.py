@@ -1,4 +1,6 @@
 from collections import Counter
+import matplotlib.pyplot as plt
+
 
 import numpy as np
 
@@ -86,3 +88,26 @@ class QuantumCircuit:
         print("Empirical probabilities:", {state: count / num_measurements for state, count in counts.items()})
 
         return counts
+
+    def run_circuit(self):
+        """
+        Run the quantum circuit and visualize the state probabilities.
+        """
+        # Step 1: Apply all gates
+        self.apply()
+
+        # Step 2: Calculate probabilities of each basis state
+        probabilities = np.abs(self.state) ** 2
+
+        # Step 3: Generate the labels for the states
+        num_states = len(probabilities)
+        state_labels = [format(i, f'0{self.num_qubits}b') for i in range(num_states)]
+
+        # Step 4: Plot the probabilities
+        plt.bar(state_labels, probabilities)
+        plt.xlabel("Basis States")
+        plt.ylabel("Probability")
+        plt.title("Quantum State Probabilities")
+        plt.xticks(rotation=90)
+        plt.tight_layout()
+        plt.show()

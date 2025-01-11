@@ -136,7 +136,7 @@ def grover_3_qubits_with_simulation():
     # Print the circuit structure (if needed for debugging)
     print(qc)
 
-    results = run_simulation(qc, num_simulations=1)
+    run_simulation(qc, num_simulations=100)
     run_noisy_simulation(qc, num_simulations=1000, gate_error_prob=0.05, measurement_error_prob=0.1)
 
 

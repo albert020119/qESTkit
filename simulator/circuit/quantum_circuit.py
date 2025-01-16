@@ -1,7 +1,5 @@
 from collections import Counter
 import matplotlib.pyplot as plt
-
-
 import numpy as np
 
 class QuantumCircuit:
@@ -111,3 +109,49 @@ class QuantumCircuit:
         plt.xticks(rotation=90)
         plt.tight_layout()
         plt.show()
+
+    def draw(self):
+        """
+        Visualize the quantum circuit, showing qubits and gates.
+        """
+        fig_width = max(6, len(self.gates) * 1.5)
+        fig_height = max(2, self.num_qubits * 1.5)
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+        for i in range(self.num_qubits):
+            ax.hlines(y=self.num_qubits - 1 - i, xmin=0, xmax=len(self.gates), color='gray', linewidth=1.5, linestyle='--', label=f'q[{i}]' if i == 0 else "")
+
+        for step, gate in enumerate(self.gates):
+            if len(gate.qubits) == 1:
+                qubit = self.num_qubits - 1 - gate.qubits[0]
+                ax.text(step + 0.5, qubit, gate.name, ha='center', va='center',
+                        bbox=dict(boxstyle='round,pad=0.5', facecolor='deepskyblue', edgecolor='black', alpha=0.8), fontsize=12)
+            else:
+                min_qubit, max_qubit = min(gate.qubits), max(gate.qubits)
+                control_qubit = self.num_qubits - 1 - gate.qubits[0]
+                target_qubit = self.num_qubits - 1 - gate.qubits[1]
+
+                ax.vlines(x=step + 0.5, ymin=target_qubit, ymax=control_qubit, color='black', linestyle='dotted', linewidth=1.2)
+
+                ax.plot(step + 0.5, control_qubit, 'o', color='black', markersize=8)
+
+                ax.text(step + 0.5, target_qubit, gate.name, ha='center', va='center',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='deepskyblue', edgecolor='black', alpha=0.8))
+
+        ax.set_xlim(0, len(self.gates))
+        ax.set_ylim(-1, self.num_qubits)
+        ax.set_yticks(range(self.num_qubits))
+        ax.set_yticklabels([f'q[{i}]' for i in range(self.num_qubits - 1, -1, -1)])
+        ax.set_xticks(range(len(self.gates) + 1))
+        ax.set_xticklabels([str(i) for i in range(len(self.gates) + 1)])
+        ax.set_xlabel("Gate Steps")
+        ax.set_title("Quantum Circuit", fontsize=14, fontweight='bold')
+        ax.grid(False)
+
+        ax.set_facecolor('#f9f9f9')
+
+        plt.subplots_adjust(left=0.1)
+
+        plt.tight_layout()
+        plt.show()
+

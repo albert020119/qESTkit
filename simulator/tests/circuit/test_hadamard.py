@@ -47,7 +47,6 @@ def test_hadamard_t():
     intermediate_state = h_gate @ np.array([1, 0], dtype=complex)
     expected_state = t_gate @ intermediate_state
 
-    # Verify the final state
     assert np.allclose(qc.state, expected_state), "Hadamard + T gate test failed!"
 
 if __name__ == "__main__":

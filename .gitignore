@@ -80,6 +80,9 @@ celerybeat-schedule
 # dotenv
 .env
 
+# JIRA plugin
+atlassian-ide-plugin.xml
+
 # virtualenv
 venv/
 ENV/

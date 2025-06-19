@@ -6,6 +6,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from google.cloud import firestore
+import numpy as np
 
 from starlette.middleware.cors import CORSMiddleware
 
@@ -41,6 +42,7 @@ GATE_NAME = Literal[
 class GateInstruction(BaseModel):
     name: GATE_NAME
     qubits: List[int]
+    param: float = 0  # Default value for param
 
 
 class SimulationRequest(BaseModel):
@@ -87,11 +89,14 @@ def build_circuit(request: SimulationRequest) -> QuantumCircuit:
         elif gate.name == "Ph":
             qc.add_gate(Ph(qubits=gate.qubits))
         elif gate.name == "Rx":
-            qc.add_gate(Rx(qubits=gate.qubits))
+            theta = float(gate.param) * np.pi / 180 if gate.param else 0  # Convert degrees to radians
+            qc.add_gate(Rx(theta=theta, qubits=gate.qubits))
         elif gate.name == "Ry":
-            qc.add_gate(Ry(qubits=gate.qubits))
+            theta = float(gate.param) * np.pi / 180 if gate.param else 0  # Convert degrees to radians
+            qc.add_gate(Ry(theta=theta, qubits=gate.qubits))
         elif gate.name == "Rz":
-            qc.add_gate(Rz(qubits=gate.qubits))
+            theta = float(gate.param) * np.pi / 180 if gate.param else 0  # Convert degrees to radians
+            qc.add_gate(Rz(theta=theta, qubits=gate.qubits))
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported gate: {gate.name}")
     return qc

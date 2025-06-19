@@ -5,16 +5,19 @@ from typing import List, Literal, Dict
 import os
 import requests
 from dotenv import load_dotenv
+from google.cloud import firestore
 
 from starlette.middleware.cors import CORSMiddleware
 
-from simulator.gates import Hadamard, X, CZ, CNOT, Identity, Ph, Rx, Ry, Rz, S, T, X, Y, Z
+from simulator.gates import Hadamard, X, CZ, CNOT, Identity, Ph, Rx, Ry, Rz, S, T, Y, Z
 from simulator.circuit.quantum_circuit import QuantumCircuit
 from simulator.runner import run_simulation, run_noisy_simulation
 
 # Load environment variables from .env file
 load_dotenv()
 gemini_api_key = os.getenv("GEMINI_API_KEY")
+# Initialize Firestore
+db = firestore.Client.from_service_account_json('secret/serviceAccountKey.json')
 
 app = FastAPI(title="Quantum Simulator API")
 
@@ -52,6 +55,11 @@ class NoisySimulationRequest(SimulationRequest):
 
 
 class UserMessage(BaseModel):
+    message: str
+
+
+class Report(BaseModel):
+    code: str
     message: str
 
 
@@ -145,6 +153,28 @@ def ask_gemini(user_message: UserMessage):
         return {"answer": short_answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
+
+
+@app.post("/reports")
+def create_report(report: Report):
+    _, doc_ref = db.collection("reports").add(report.model_dump())
+    return {"id": doc_ref.id}
+
+
+@app.get("/reports")
+def list_reports():
+    docs = db.collection("reports").stream()
+    return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+
+
+def test_create_report():
+    """Creates a sample report for testing purposes."""
+    sample_report = Report(code="print('Hello, World!')", message="This is a test report.")
+    return create_report(sample_report)
+
+def test_list_reports():
+    """Lists all reports for testing purposes."""
+    return list_reports()
 
 
 @app.get("/")

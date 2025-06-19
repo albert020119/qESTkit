@@ -9,6 +9,8 @@ __pycache__/
 *.so
 
 .idea
+secret/serviceAccountKey.json
+secret/
 
 # Distribution / packaging
 .Python

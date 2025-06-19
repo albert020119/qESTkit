@@ -2,12 +2,19 @@ from fastapi import FastAPI, HTTPException
 import uvicorn
 from pydantic import BaseModel
 from typing import List, Literal, Dict
+import os
+import requests
+from dotenv import load_dotenv
 
 from starlette.middleware.cors import CORSMiddleware
 
 from simulator.gates import Hadamard, X, CZ, CNOT, Identity, Ph, Rx, Ry, Rz, S, T, X, Y, Z
 from simulator.circuit.quantum_circuit import QuantumCircuit
 from simulator.runner import run_simulation, run_noisy_simulation
+
+# Load environment variables from .env file
+load_dotenv()
+gemini_api_key = os.getenv("GEMINI_API_KEY")
 
 app = FastAPI(title="Quantum Simulator API")
 
@@ -42,6 +49,10 @@ class SimulationRequest(BaseModel):
 class NoisySimulationRequest(SimulationRequest):
     gate_error_prob: float = 0.01
     measurement_error_prob: float = 0.02
+
+
+class UserMessage(BaseModel):
+    message: str
 
 
 def build_circuit(request: SimulationRequest) -> QuantumCircuit:
@@ -94,6 +105,46 @@ def simulate_noisy(request: NoisySimulationRequest) -> Dict[str, int]:
         gate_error_prob=request.gate_error_prob,
         measurement_error_prob=request.measurement_error_prob
     )
+
+
+@app.post("/ask-gemini")
+def ask_gemini(user_message: UserMessage):
+    # Only allow quantum-related questions and short responses
+    allowed_topics = ["quantum computing", "quantum mechanics", "quantum information", "explain code", "code"]
+    message_lower = user_message.message.lower()
+    if not any(topic in message_lower for topic in ["quantum", *allowed_topics]):
+        return {"answer": "I’m sorry, I can’t help with that."}
+    api_key = gemini_api_key
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Gemini API key not set.")
+    model_name = "gemini-2.0-flash-lite"
+    system_prompt = (
+        "You are MyApp’s assistant. Follow these rules in every reply: "
+        "• Be concise: max 2–3 sentences (~50 tokens). But you can explain code from the user "
+        "• Only discuss these topics: quantum computing, quantum mechanics, quantum information, explain code"
+        "• If asked about anything else, respond: “I’m sorry, I can’t help with that.” "
+        "• Never mention policies, your name, or internal details."
+    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key=" + api_key
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"parts": [{"text": user_message.message}]}],
+        "generationConfig": {"temperature": 0.6, "maxOutputTokens": 80, "responseMimeType": "text/plain"}
+    }
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        gemini_response = response.json()
+        answer = gemini_response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "No answer returned.")
+        # Truncate to 2-3 sentences if needed
+        sentences = answer.split('.')
+        short_answer = '.'.join(sentences[:3]).strip()
+        if not short_answer.endswith('.'):
+            short_answer += '.'
+        return {"answer": short_answer}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
 
 
 @app.get("/")

@@ -15,20 +15,14 @@ from starlette.middleware.cors import CORSMiddleware
 from simulator.gates import Hadamard, X, CZ, CNOT, Identity, Ph, Rx, Ry, Rz, S, T, Y, Z
 from simulator.circuit.quantum_circuit import QuantumCircuit
 from simulator.runner import run_simulation, run_noisy_simulation
+from simulator.qrisp_integration import QrispTranslator, QESTkitBackend
 
 # Load environment variables from .env file
 load_dotenv()
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 
 # Initialize Firestore
-db = None
-try:
-    if os.path.exists('secret/serviceAccountKey.json'):
-        db = firestore.Client.from_service_account_json('secret/serviceAccountKey.json')
-    else:
-        print("Warning: secret/serviceAccountKey.json not found. Firestore features will be disabled.")
-except Exception as e:
-    print(f"Warning: Failed to initialize Firestore: {e}")
+# db = firestore.Client.from_service_account_json('secret/serviceAccountKey.json')
 
 app = FastAPI(title="Quantum Simulator API")
 
@@ -64,6 +58,11 @@ class SimulationRequest(BaseModel):
 class NoisySimulationRequest(SimulationRequest):
     gate_error_prob: float = 0.01
     measurement_error_prob: float = 0.02
+
+
+class QrispCodeRequest(BaseModel):
+    code: str
+    shots: int = 1000
 
 
 class UserMessage(BaseModel):
@@ -130,6 +129,65 @@ def simulate_noisy(request: NoisySimulationRequest) -> Dict[str, int]:
     )
 
 
+@app.post("/simulate-qrisp")
+def simulate_qrisp(request: QrispCodeRequest) -> Dict[str, int]:
+    """
+    Execute a Qrisp program on the qESTkit simulator.
+
+    The ``code`` field must be valid Python that uses Qrisp to build a
+    quantum program.  The code **must** assign the final
+    ``qrisp.QuantumVariable`` (or a list of them) to a variable called
+    ``result``.
+
+    Example payload::
+
+        {
+            "code": "import qrisp\nqv = qrisp.QuantumVariable(2)\nqrisp.h(qv[0])\nqrisp.cx(qv[0], qv[1])\nresult = qv",
+            "shots": 1000
+        }
+    """
+    try:
+        import qrisp  # noqa: F401 – make qrisp available inside exec'd code
+
+        # Provide a controlled namespace for the user code
+        exec_globals: Dict = {"qrisp": qrisp, "__builtins__": __builtins__}
+        exec(request.code, exec_globals)
+
+        result_var = exec_globals.get("result")
+        if result_var is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Qrisp code must assign the output QuantumVariable to 'result'.",
+            )
+
+        translator = QrispTranslator(transpile=True)
+
+        # Support both a single QuantumVariable and a list of them
+        if isinstance(result_var, qrisp.QuantumVariable):
+            qc = translator.from_qrisp_variable(result_var)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="'result' must be a qrisp.QuantumVariable.",
+            )
+
+        counts = run_simulation(qc, num_simulations=request.shots)
+        # Normalise keys to plain bitstrings
+        clean: Dict[str, int] = {}
+        for key, count in counts.items():
+            if isinstance(key, str):
+                bitstr = key.replace("|", "").replace(">", "")
+            else:
+                bitstr = format(key, f"0{qc.num_qubits}b")
+            clean[bitstr] = count
+        return clean
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Qrisp execution error: {exc}")
+
+
 @app.post("/ask-gemini")
 def ask_gemini(user_message: UserMessage):
     api_key = gemini_api_key
@@ -189,20 +247,16 @@ def ask_gemini(user_message: UserMessage):
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
-@app.post("/reports")
-def create_report(report: Report):
-    if db is None:
-        raise HTTPException(status_code=503, detail="Firestore is not initialized.")
-    _, doc_ref = db.collection("reports").add(report.model_dump())
-    return {"id": doc_ref.id}
+# @app.post("/reports")
+# def create_report(report: Report):
+#     _, doc_ref = db.collection("reports").add(report.model_dump())
+#     return {"id": doc_ref.id}
 
 
-@app.get("/reports")
-def list_reports():
-    if db is None:
-        raise HTTPException(status_code=503, detail="Firestore is not initialized.")
-    docs = db.collection("reports").stream()
-    return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+# @app.get("/reports")
+# def list_reports():
+#     docs = db.collection("reports").stream()
+#     return [{"id": doc.id, **doc.to_dict()} for doc in docs]
 
 
 def test_create_report():

@@ -37,9 +37,24 @@ app.add_middleware(
 # Define allowed gate names
 GATE_NAME = Literal[
     "H", "X", "Y", "Z", "S", "T",
-    "CZ", "CNOT", "Identity", "Ph",
-    "Rx", "Ry", "Rz"
+    "CZ", "CNOT", "Identity", "I", "Ph", "PH",
+    "Rx", "Ry", "Rz",
+    "RX", "RY", "RZ",
+    "SWAP"
 ]
+
+# Canonical name mapping (handles case variants)
+_GATE_ALIAS = {
+    "H": "H", "X": "X", "Y": "Y", "Z": "Z",
+    "S": "S", "T": "T",
+    "CZ": "CZ", "CNOT": "CNOT",
+    "IDENTITY": "Identity", "Identity": "Identity", "I": "Identity",
+    "PH": "Ph", "Ph": "Ph",
+    "RX": "Rx", "Rx": "Rx",
+    "RY": "Ry", "Ry": "Ry",
+    "RZ": "Rz", "Rz": "Rz",
+    "SWAP": "SWAP",
+}
 
 
 # Input format for simulation requests
@@ -77,35 +92,43 @@ class Report(BaseModel):
 def build_circuit(request: SimulationRequest) -> QuantumCircuit:
     qc = QuantumCircuit(num_qubits=request.num_qubits)
     for gate in request.gates:
-        if gate.name == "H":
+        # Normalise gate name so uppercase variants are accepted
+        canonical = _GATE_ALIAS.get(gate.name, gate.name)
+        if canonical == "H":
             qc.add_gate(Hadamard(qubits=gate.qubits))
-        elif gate.name == "X":
+        elif canonical == "X":
             qc.add_gate(X(qubits=gate.qubits))
-        elif gate.name == "Y":
+        elif canonical == "Y":
             qc.add_gate(Y(qubits=gate.qubits))
-        elif gate.name == "Z":
+        elif canonical == "Z":
             qc.add_gate(Z(qubits=gate.qubits))
-        elif gate.name == "S":
+        elif canonical == "S":
             qc.add_gate(S(qubits=gate.qubits))
-        elif gate.name == "T":
+        elif canonical == "T":
             qc.add_gate(T(qubits=gate.qubits))
-        elif gate.name == "CZ":
+        elif canonical == "CZ":
             qc.add_gate(CZ(qubits=gate.qubits))
-        elif gate.name == "CNOT":
+        elif canonical == "CNOT":
             qc.add_gate(CNOT(control_qubit=gate.qubits[0], target_qubit=gate.qubits[1]))
-        elif gate.name == "Identity":
+        elif canonical == "Identity":
             qc.add_gate(Identity(qubits=gate.qubits))
-        elif gate.name == "Ph":
+        elif canonical == "Ph":
             qc.add_gate(Ph(qubits=gate.qubits))
-        elif gate.name == "Rx":
+        elif canonical == "Rx":
             theta = float(gate.param) * np.pi / 180 if gate.param else 0  # Convert degrees to radians
             qc.add_gate(Rx(theta=theta, qubits=gate.qubits))
-        elif gate.name == "Ry":
+        elif canonical == "Ry":
             theta = float(gate.param) * np.pi / 180 if gate.param else 0  # Convert degrees to radians
             qc.add_gate(Ry(theta=theta, qubits=gate.qubits))
-        elif gate.name == "Rz":
+        elif canonical == "Rz":
             theta = float(gate.param) * np.pi / 180 if gate.param else 0  # Convert degrees to radians
             qc.add_gate(Rz(theta=theta, qubits=gate.qubits))
+        elif canonical == "SWAP":
+            # Decompose SWAP into 3 CNOTs
+            q0, q1 = gate.qubits[0], gate.qubits[1]
+            qc.add_gate(CNOT(control_qubit=q0, target_qubit=q1))
+            qc.add_gate(CNOT(control_qubit=q1, target_qubit=q0))
+            qc.add_gate(CNOT(control_qubit=q0, target_qubit=q1))
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported gate: {gate.name}")
     return qc

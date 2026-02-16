@@ -65,13 +65,18 @@ def run_noisy_simulation(circuit, num_simulations=1000, gate_error_prob=0.01, me
     # Apply all gates in the circuit with gate errors
     state = circuit.state
     for gate in circuit.gates:
-        if random.random() < gate_error_prob:
-            # Introduce random gate error: Add a small random perturbation to the operator
-            noise = np.random.normal(0, 0.01, gate.get_operator(circuit.num_qubits).shape)
-            noisy_operator = gate.get_operator(circuit.num_qubits) + noise
-            state = noisy_operator @ state
+        # BULLETPROOF CHECK: Does it have a control qubit, or is the name CNOT/CZ?
+        if hasattr(gate, 'control_qubit') or type(gate).__name__.upper() in ['CNOT', 'CZ']:
+            print(f"SUCCESS: Bypassing get_operator for {type(gate).__name__}")
+            state = gate.apply(state)
         else:
-            state = gate.get_operator(circuit.num_qubits) @ state
+            # Apply Gaussian noise ONLY to single-qubit gates
+            if random.random() < gate_error_prob:
+                noise = np.random.normal(0, 0.01, gate.get_operator(circuit.num_qubits).shape)
+                noisy_operator = gate.get_operator(circuit.num_qubits) + noise
+                state = noisy_operator @ state
+            else:
+                state = gate.get_operator(circuit.num_qubits) @ state
 
     # Calculate probabilities of each basis state
     probabilities = np.abs(state) ** 2

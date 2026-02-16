@@ -22,7 +22,7 @@ load_dotenv()
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 
 # Initialize Firestore
-# db = firestore.Client.from_service_account_json('secret/serviceAccountKey.json')
+db = firestore.Client.from_service_account_json('secret/serviceAccountKey.json')
 
 app = FastAPI(title="Quantum Simulator API")
 
@@ -247,16 +247,16 @@ def ask_gemini(user_message: UserMessage):
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
-# @app.post("/reports")
-# def create_report(report: Report):
-#     _, doc_ref = db.collection("reports").add(report.model_dump())
-#     return {"id": doc_ref.id}
+@app.post("/reports")
+def create_report(report: Report):
+    _, doc_ref = db.collection("reports").add(report.model_dump())
+    return {"id": doc_ref.id}
 
 
-# @app.get("/reports")
-# def list_reports():
-#     docs = db.collection("reports").stream()
-#     return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+@app.get("/reports")
+def list_reports():
+    docs = db.collection("reports").stream()
+    return [{"id": doc.id, **doc.to_dict()} for doc in docs]
 
 
 def test_create_report():

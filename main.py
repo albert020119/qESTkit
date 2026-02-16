@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from google.cloud import firestore
 import numpy as np
 
+# Configure your key
+
 from starlette.middleware.cors import CORSMiddleware
 
 from simulator.gates import Hadamard, X, CZ, CNOT, Identity, Ph, Rx, Ry, Rz, S, T, Y, Z
@@ -17,8 +19,16 @@ from simulator.runner import run_simulation, run_noisy_simulation
 # Load environment variables from .env file
 load_dotenv()
 gemini_api_key = os.getenv("GEMINI_API_KEY")
+
 # Initialize Firestore
-db = firestore.Client.from_service_account_json('secret/serviceAccountKey.json')
+db = None
+try:
+    if os.path.exists('secret/serviceAccountKey.json'):
+        db = firestore.Client.from_service_account_json('secret/serviceAccountKey.json')
+    else:
+        print("Warning: secret/serviceAccountKey.json not found. Firestore features will be disabled.")
+except Exception as e:
+    print(f"Warning: Failed to initialize Firestore: {e}")
 
 app = FastAPI(title="Quantum Simulator API")
 
@@ -122,52 +132,75 @@ def simulate_noisy(request: NoisySimulationRequest) -> Dict[str, int]:
 
 @app.post("/ask-gemini")
 def ask_gemini(user_message: UserMessage):
-    # Only allow quantum-related questions and short responses
-    allowed_topics = ["quantum computing", "quantum mechanics", "quantum information", "explain code", "code"]
-    message_lower = user_message.message.lower()
-    if not any(topic in message_lower for topic in ["quantum", *allowed_topics]):
-        return {"answer": "I’m sorry, I can’t help with that."}
     api_key = gemini_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="Gemini API key not set.")
-    model_name = "gemini-2.0-flash-lite"
+
+    # Use a standard model name confirmed to work with system instructions
+    model_name = "gemini-2.5-flash"
+
     system_prompt = (
-        "You are MyApp’s assistant. Follow these rules in every reply: "
-        "• Be concise: max 2–3 sentences (~50 tokens). But you can explain code from the user "
-        "• Only discuss these topics: quantum computing, quantum mechanics, quantum information, explain code"
-        "• If asked about anything else, respond: “I’m sorry, I can’t help with that.” "
-        "• Never mention policies, your name, or internal details."
+        "You are a helpful assistant for a Quantum Simulator application. "
+        "Your goal is to help users understand quantum computing concepts, quantum gates, and circuits. "
+        "You should also be able to explain code snippets provided by the user. "
+        "Keep your answers concise (2-3 sentences) unless a detailed code explanation is required. "
+        "If the user asks about topics unrelated to quantum computing or programming, politely decline."
     )
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key=" + api_key
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
+
     data = {
-        "system_instruction": {"parts": [{"text": system_prompt}]},
-        "contents": [{"parts": [{"text": user_message.message}]}],
-        "generationConfig": {"temperature": 0.6, "maxOutputTokens": 80, "responseMimeType": "text/plain"}
+        "system_instruction": {
+            "parts": [{"text": system_prompt}]
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": user_message.message}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 300
+        }
     }
+
     try:
+        # Using requests inside an async function blocks the event loop, 
+        # but for simplicity we keep it unless you want to switch to httpx.
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         gemini_response = response.json()
-        answer = gemini_response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "No answer returned.")
-        # Truncate to 2-3 sentences if needed
-        sentences = answer.split('.')
-        short_answer = '.'.join(sentences[:3]).strip()
-        if not short_answer.endswith('.'):
-            short_answer += '.'
-        return {"answer": short_answer}
+
+        try:
+            answer = gemini_response["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            answer = "I'm sorry, I couldn't generate a response."
+
+        return {"answer": answer}
+
+    except requests.exceptions.HTTPError as e:
+        print(f"Gemini API Error: {e}")
+        if e.response is not None:
+            print(f"Response content: {e.response.text}")
+        raise HTTPException(status_code=500, detail=f"Gemini API error: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
 @app.post("/reports")
 def create_report(report: Report):
+    if db is None:
+        raise HTTPException(status_code=503, detail="Firestore is not initialized.")
     _, doc_ref = db.collection("reports").add(report.model_dump())
     return {"id": doc_ref.id}
 
 
 @app.get("/reports")
 def list_reports():
+    if db is None:
+        raise HTTPException(status_code=503, detail="Firestore is not initialized.")
     docs = db.collection("reports").stream()
     return [{"id": doc.id, **doc.to_dict()} for doc in docs]
 

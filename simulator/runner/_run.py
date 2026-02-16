@@ -52,6 +52,12 @@ def run_simulation(circuit, num_simulations=100):
     return formatted_counts
 
 
+# Define IBM hardware profiles
+IBM_PROFILES = {
+    "ibm_kyiv": {"gate_error": 0.008, "meas_error": 0.01},
+    "ibm_brisbane": {"gate_error": 0.012, "meas_error": 0.02}
+}
+
 def run_noisy_simulation(circuit, num_simulations=1000, gate_error_prob=0.01, measurement_error_prob=0.02):
     """
     Simulate a quantum circuit with noise, including gate errors and measurement noise.
@@ -62,16 +68,27 @@ def run_noisy_simulation(circuit, num_simulations=1000, gate_error_prob=0.01, me
     :param measurement_error_prob: Probability of introducing random errors in measurements.
     :return: A dictionary with counts of each measured outcome.
     """
+    # Check if the gate_error_prob matches any IBM profile
+    if gate_error_prob == IBM_PROFILES["ibm_kyiv"]["gate_error"]:
+        print("Running Hardware Emulation: ibm_kyiv")
+    elif gate_error_prob == IBM_PROFILES["ibm_brisbane"]["gate_error"]:
+        print("Running Hardware Emulation: ibm_brisbane")
+
     # Apply all gates in the circuit with gate errors
     state = circuit.state
     for gate in circuit.gates:
-        if random.random() < gate_error_prob:
-            # Introduce random gate error: Add a small random perturbation to the operator
-            noise = np.random.normal(0, 0.01, gate.get_operator(circuit.num_qubits).shape)
-            noisy_operator = gate.get_operator(circuit.num_qubits) + noise
-            state = noisy_operator @ state
+        # BULLETPROOF CHECK: Does it have a control qubit, or is the name CNOT/CZ?
+        if hasattr(gate, 'control_qubit') or type(gate).__name__.upper() in ['CNOT', 'CZ']:
+            print(f"SUCCESS: Bypassing get_operator for {type(gate).__name__}")
+            state = gate.apply(state)
         else:
-            state = gate.get_operator(circuit.num_qubits) @ state
+            # Apply Gaussian noise ONLY to single-qubit gates
+            if random.random() < gate_error_prob:
+                noise = np.random.normal(0, 0.01, gate.get_operator(circuit.num_qubits).shape)
+                noisy_operator = gate.get_operator(circuit.num_qubits) + noise
+                state = noisy_operator @ state
+            else:
+                state = gate.get_operator(circuit.num_qubits) @ state
 
     # Calculate probabilities of each basis state
     probabilities = np.abs(state) ** 2

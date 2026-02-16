@@ -54,23 +54,29 @@ class Gate:
 
     def get_operator(self, num_qubits):
         """
-        Construct the full operator for the quantum system.
+        Construct the full operator for the quantum system programmatically.
 
         :param num_qubits: Total number of qubits in the quantum system.
         :return: A matrix representing the gate operator for the full system.
         """
-        if self.matrix is None:
-            raise ValueError("Gate matrix is not defined.")
+        # Create an identity matrix for the full system
+        I = np.eye(2**num_qubits, dtype=complex)
 
-        identity = np.eye(2, dtype=complex)
-        operator = self.matrix
+        # Initialize an empty matrix with the same shape as the identity
+        op = np.zeros_like(I, dtype=complex)
 
-        for i in range(num_qubits):
-            if i == self.qubits[0]:
-                continue
-            operator = np.kron(identity, operator)
+        # Loop through each column of the identity matrix
+        for col_idx in range(I.shape[1]):
+            # Treat the column as a state vector
+            state_vector = I[:, col_idx]
 
-        return operator
+            # Apply the gate to the state vector
+            transformed_vector = self.apply(state_vector)
+
+            # Store the transformed vector as the corresponding column in op
+            op[:, col_idx] = transformed_vector
+
+        return op
 
     def __repr__(self):
         return f"Gate(name={self.name}, qubits={self.qubits})"

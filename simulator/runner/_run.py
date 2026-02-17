@@ -54,8 +54,22 @@ def run_simulation(circuit, num_simulations=100):
 
 # Define IBM hardware profiles
 IBM_PROFILES = {
-    "ibm_kyiv": {"gate_error": 0.008, "meas_error": 0.01},
-    "ibm_brisbane": {"gate_error": 0.012, "meas_error": 0.02}
+    "ibm_kyiv": {
+        "gate_error": 0.008,
+        "meas_error": 0.01,
+        "single_qubit_error": 0.001,
+        "cnot_error": 0.01,
+        "t1_decay_prob": 0.03,
+        "thermal_prob": 0.002
+    },
+    "ibm_brisbane": {
+        "gate_error": 0.012,
+        "meas_error": 0.02,
+        "single_qubit_error": 0.002,  # made the probabilities bigger cause its usually noisier than kyiv
+        "cnot_error": 0.02,           
+        "t1_decay_prob": 0.04,       
+        "thermal_prob": 0.005         
+    }
 }
 
 def run_noisy_simulation(circuit, num_simulations=1000, gate_error_prob=0.01, measurement_error_prob=0.02):
@@ -68,22 +82,33 @@ def run_noisy_simulation(circuit, num_simulations=1000, gate_error_prob=0.01, me
     :param measurement_error_prob: Probability of introducing random errors in measurements.
     :return: A dictionary with counts of each measured outcome.
     """
-    # Check if the gate_error_prob matches any IBM profile
-    if gate_error_prob == IBM_PROFILES["ibm_kyiv"]["gate_error"]:
-        print("Running Hardware Emulation: ibm_kyiv")
-    elif gate_error_prob == IBM_PROFILES["ibm_brisbane"]["gate_error"]:
-        print("Running Hardware Emulation: ibm_brisbane")
+    # Intercept IBM profile if gate_error_prob matches
+    profile = None
+    for name, params in IBM_PROFILES.items():
+        if gate_error_prob == params["gate_error"]:
+            profile = params
+            print(f"Running Hardware Emulation: {name}")
+            break
+
+    # Default to basic noise if no profile matched
+    single_qubit_error = profile["single_qubit_error"] if profile else gate_error_prob
+    cnot_error = profile["cnot_error"] if profile else gate_error_prob
+    t1_decay_prob = profile["t1_decay_prob"] if profile else 0.0
+    thermal_prob = profile["thermal_prob"] if profile else 0.0
 
     # Apply all gates in the circuit with gate errors
     state = circuit.state
     for gate in circuit.gates:
-        # BULLETPROOF CHECK: Does it have a control qubit, or is the name CNOT/CZ?
         if hasattr(gate, 'control_qubit') or type(gate).__name__.upper() in ['CNOT', 'CZ']:
-            print(f"SUCCESS: Bypassing get_operator for {type(gate).__name__}")
+            # Apply ideal gate
             state = gate.apply(state)
+            # Apply CNOT error
+            if random.random() < cnot_error:
+                noise = np.random.normal(0, 0.01, state.shape) + 1j * np.random.normal(0, 0.01, state.shape)
+                state += noise
         else:
-            # Apply Gaussian noise ONLY to single-qubit gates
-            if random.random() < gate_error_prob:
+            # Apply single-qubit gate error
+            if random.random() < single_qubit_error:
                 noise = np.random.normal(0, 0.01, gate.get_operator(circuit.num_qubits).shape)
                 noisy_operator = gate.get_operator(circuit.num_qubits) + noise
                 state = noisy_operator @ state
@@ -98,17 +123,32 @@ def run_noisy_simulation(circuit, num_simulations=1000, gate_error_prob=0.01, me
     if not np.isclose(total_probability, 1.0):
         probabilities /= total_probability  # Normalize in case of noise
 
-    # Perform measurements with measurement noise
+    # Perform measurements with advanced or basic noise
     measurement_results = []
     for _ in range(num_simulations):
-        # Simulate a noisy measurement
+        # Simulate a measurement
         true_state = np.random.choice(len(probabilities), p=probabilities)
-        if random.random() < measurement_error_prob:
-            # Flip to a random state due to measurement error
-            noisy_state = random.randint(0, len(probabilities) - 1)
-            measurement_results.append(noisy_state)
+
+        if profile:
+            # Advanced noise: T1 decay and thermal excitation
+            true_state_binary = bin(true_state)[2:].zfill(circuit.num_qubits)
+            noisy_state_binary = ""
+            for bit in true_state_binary:
+                if bit == '1':
+                    # T1 decay: |1> -> |0>
+                    noisy_state_binary += '0' if random.random() < t1_decay_prob else '1'
+                elif bit == '0':
+                    # Thermal excitation: |0> -> |1>
+                    noisy_state_binary += '1' if random.random() < thermal_prob else '0'
+            noisy_state = int(noisy_state_binary, 2)
         else:
-            measurement_results.append(true_state)
+            # Basic noise: Random flip
+            if random.random() < measurement_error_prob:
+                noisy_state = random.randint(0, len(probabilities) - 1)
+            else:
+                noisy_state = true_state
+
+        measurement_results.append(noisy_state)
 
     # Count occurrences of each measurement outcome
     counts = Counter(measurement_results)
